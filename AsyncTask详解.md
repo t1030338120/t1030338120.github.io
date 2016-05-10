@@ -39,7 +39,7 @@ AsyncTask是Android框架提供给开发者的一个辅助类，使用该类我�
 * doInBackground()执行完毕，怎么切换到UI线程并执行onPostExecute()
 
 
-###3、源码解析
+###2、源码解析
 注：本篇源码分析基于Andorid-23
 
 ####问题1、onPreExecute()方法什么时候被调用
@@ -73,7 +73,7 @@ AsyncTask是Android框架提供给开发者的一个辅助类，使用该类我�
     }
 
 
-上面代码我们一下发现了onPreExecute()方法，**第一个问题的答案就有了**
+上面代码我们一下发现了onPreExecute()方法，这里有个细节：onPreExecute()是和execute()方法是在同一个线程，如果execute()不是UI线程调用，那么就不能在onPreExecute()方法里面做UI相关的操作。
 <br>
 ####问题2、doInBackground()怎么被调用执行的
 继续寻找第二个问题的答案，向下看发现了**mWorker**和**mFuture**这两个变量，这两个变量是干什么的？找一下它们的初始化代码，在AsyncTast的构造方法中找到了，代码如下：
@@ -189,7 +189,7 @@ callable是构造方法传入，mFuture的初始方法 mFuture = new FutureTask<
 
     private static class InternalHandler extends Handler {
         public InternalHandler() {
-            super(Looper.getMainLooper());//确保即使在子线程中调用execute()方法，onPostExecute（）也在UI线程
+            super(Looper.getMainLooper());//使用主线程的Looper和MessageQueue穿件Handler,确保即使在子线程中调用execute()方法，onPostExecute（）也在UI线程
         }
 
         @SuppressWarnings({"unchecked", "RawUseOfParameterizedType"})
@@ -202,7 +202,7 @@ callable是构造方法传入，mFuture的初始方法 mFuture = new FutureTask<
                     result.mTask.finish(result.mData[0]);
                     break;
                 case MESSAGE_POST_PROGRESS:
-                    result.mTask.onProgressUpdate(result.mData);
+                    result.mTask.onProgressUpdate(result.mData);//更新当前进度条
                     break;
             }
         }
@@ -222,3 +222,14 @@ result.mTask就是一个AsyncTast对象，看一下它的finish()方法。
     }
 
 在这里我们看到调用了onPostExecute()方法。整个流程已经清楚了。
+最后忽略掉所有细节总结下：**AsyncTast调用execute()方法，使用线程池开启一个后台线程，在后台线程中会最终调用doInBackground()方法，并在执行完毕后将结果通过Handler发送一个消息，切换到UI线程，然后在Handler的handleMessage()方法中最终会调用onPostExecute()方法。**
+
+
+###3、AsyncTast容易忽略的问题
+1. 在3.0之前的AsyncTask是并发执行，而3.0之后的AsyncTask默认是串行执行的，可以通过配置线程池来实现并发。
+2. AsyncTask容易引起内存泄露，在Activity/Fragment中尽量使用AsyncTast的静态内部类，因为非静态内部类会隐式的持有外部类的引用。
+3. AsyncTast的cancel()调用后，doInBackgroud()方法仍然会在后后执行完毕，并没有停止后台任务。
+
+<br>
+学习资料：<br>
+[ Android AsyncTask完全解析，带你从源码的角度彻底理解](http://blog.csdn.net/guolin_blog/article/details/11711405)
